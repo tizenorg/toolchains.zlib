@@ -8,6 +8,7 @@ Group:      System/Libraries
 License:    zlib and Boost
 URL:        http://www.gzip.org/zlib/
 Source0:    http://www.zlib.net/zlib-%{version}.tar.gz
+Source1001: packaging/zlib.manifest 
 Patch0:     zlib-1.2.4-autotools.patch
 Patch1:     zlib-1.2.5-lfs-decls-bmc-11751.patch
 Requires(post): /sbin/ldconfig
@@ -79,6 +80,7 @@ iconv -f windows-1252 -t utf-8 <ChangeLog >ChangeLog.tmp
 mv ChangeLog.tmp ChangeLog
 
 %build
+cp %{SOURCE1001} .
 CFLAGS=$RPM_OPT_FLAGS ./configure --libdir=%{_libdir} --includedir=%{_includedir} --prefix=%{_prefix}
 
 #ensure 64 offset versions are compiled (do not override CFLAGS blindly)
@@ -152,22 +154,27 @@ make test
 %docs_package
 
 %files
+%manifest zlib.manifest
 /%{_lib}/libz.so.*
 
 
 %files static
+%manifest zlib.manifest
 %{_libdir}/libz.a
 
 %files -n minizip
+%manifest zlib.manifest
 %{_libdir}/libminizip.so.*
 
 %files -n minizip-devel
+%manifest zlib.manifest
 %dir %{_includedir}/minizip
 %{_includedir}/minizip/*.h
 %{_libdir}/libminizip.so
 %{_libdir}/pkgconfig/minizip.pc
 
 %files devel
+%manifest zlib.manifest
 %{_libdir}/libz.so
 %{_includedir}/zconf.h
 %{_includedir}/zlib.h
