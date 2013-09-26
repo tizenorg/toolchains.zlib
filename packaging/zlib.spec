@@ -136,6 +136,9 @@ popd
 
 rm -f $RPM_BUILD_ROOT%{_libdir}/*.la
 
+# Tizen SDK license
+mkdir -p %{buildroot}/usr/share/license
+cp contrib/dotzlib/LICENSE_1_0.txt %{buildroot}/usr/share/license/%{name}
 
 %check
 make test
@@ -156,6 +159,7 @@ make test
 %files
 %manifest zlib.manifest
 /%{_lib}/libz.so.*
+/usr/share/license/%{name}
 
 
 %files static
