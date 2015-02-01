@@ -59,6 +59,7 @@ build64=0
 gcc=0
 old_cc="$CC"
 old_cflags="$CFLAGS"
+ARCH=""
 
 while test $# -ge 1
 do
@@ -75,6 +76,7 @@ case "$1" in
     --sharedlibdir=*) sharedlibdir=`echo $1 | sed 's/.*=//'`; shift ;;
     -i*=* | --includedir=*) includedir=`echo $1 | sed 's/.*=//'`;shift ;;
     -u*=* | --uname=*) uname=`echo $1 | sed 's/.*=//'`;shift ;;
+    -a*=* | --arch=*) ARCH=`echo $1 | sed 's/.*=//'`;shift ;;
     -p* | --prefix) prefix="$2"; shift; shift ;;
     -e* | --eprefix) exec_prefix="$2"; shift; shift ;;
     -l* | --libdir) libdir="$2"; shift; shift ;;
@@ -562,6 +564,7 @@ sed < Makefile.in "
 /^LDCONFIG *=/s#=.*#=$LDCONFIG#
 /^LDSHAREDLIBC *=/s#=.*#=$LDSHAREDLIBC#
 /^EXE *=/s#=.*#=$EXE#
+/^ARCH *=/s#=.*#=$ARCH#
 /^prefix *=/s#=.*#=$prefix#
 /^exec_prefix *=/s#=.*#=$exec_prefix#
 /^libdir *=/s#=.*#=$libdir#

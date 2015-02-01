@@ -79,11 +79,16 @@ iconv -f windows-1252 -t utf-8 <ChangeLog >ChangeLog.tmp
 mv ChangeLog.tmp ChangeLog
 
 %build
-CFLAGS=$RPM_OPT_FLAGS ./configure --libdir=%{_libdir} --includedir=%{_includedir} --prefix=%{_prefix}
+CFLAGS=$RPM_OPT_FLAGS ./configure --libdir=%{_libdir} --includedir=%{_includedir} --prefix=%{_prefix} --arch=%{_arch}
 
 #ensure 64 offset versions are compiled (do not override CFLAGS blindly)
+%ifarch %{arm}
+export CFLAGS="`egrep ^CFLAGS Makefile | sed -e 's/CFLAGS=//' | sed -e 's/vfpv3/neon/' | sed -e 's/neon-d16/neon/'` -D__ARM_HAVE_NEON"
+export SFLAGS="`egrep ^SFLAGS Makefile | sed -e 's/SFLAGS=//' | sed -e 's/vfpv3/neon/' | sed -e 's/neon-d16/neon/'` -D__ARM_HAVE_NEON"
+%else
 export CFLAGS="`egrep ^CFLAGS Makefile | sed -e 's/CFLAGS=//'`"
 export SFLAGS="`egrep ^SFLAGS Makefile | sed -e 's/SFLAGS=//'`"
+%endif
 
 #
 # first,build with -fprofile-generate to create the profile data
