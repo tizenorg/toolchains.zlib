@@ -27,6 +27,9 @@
 #endif /* MAKECRCH */
 
 #include "zutil.h"      /* for STDC and FAR definitions */
+#ifdef __ARM_HAVE_NEON
+#include <arm_neon.h>
+#endif
 
 #define local static
 
@@ -218,13 +221,11 @@ const unsigned long FAR * ZEXPORT get_crc_table()
 #define DO8 DO1; DO1; DO1; DO1; DO1; DO1; DO1; DO1
 
 /* ========================================================================= */
-unsigned long ZEXPORT crc32(crc, buf, len)
+local unsigned long __crc32(crc, buf, len)
     unsigned long crc;
     const unsigned char FAR *buf;
     uInt len;
 {
-    if (buf == Z_NULL) return 0UL;
-
 #ifdef DYNAMIC_CRC_TABLE
     if (crc_table_empty)
         make_crc_table();
@@ -250,6 +251,139 @@ unsigned long ZEXPORT crc32(crc, buf, len)
         DO1;
     } while (--len);
     return crc ^ 0xffffffffUL;
+}
+
+#ifdef __ARM_HAVE_NEON
+local inline uint64x1_t crc32_neon_proc_part(poly8x8_t lhs, poly8x8_t rhs1,
+   poly8x8_t rhs2, poly8x8_t rhs3, poly8x8_t rhs4)
+{
+    poly16x8_t lm1, lm2, lm3, lm4;
+    poly16x4x2_t lz1, lz2;
+    uint16x4_t le1, le2;
+    uint32x2_t le3;
+    uint32x4_t ls1, ls2, lf1, lf2;
+    uint64x2_t ls3, le4;
+    uint64x1_t lf3, lf4;
+
+    lm1 = vmull_p8(lhs, rhs1);
+    lm2 = vmull_p8(lhs, rhs2);
+    lz1 = vuzp_p16(vget_low_p16(lm2), vget_high_p16(lm2));
+    le1 = veor_u16(vreinterpret_u16_p16(lz1.val[0]),
+                   vreinterpret_u16_p16(lz1.val[1]));
+    ls1 = vshll_n_u16(le1, 8);
+    lf1 = veorq_u32(ls1, vreinterpretq_u32_p16(lm1));
+
+    lm3 = vmull_p8(lhs, rhs3);
+    lm4 = vmull_p8(lhs, rhs4);
+    lz2 = vuzp_p16(vget_low_p16(lm4), vget_high_p16(lm4));
+    le2 = veor_u16(vreinterpret_u16_p16(lz2.val[0]),
+                   vreinterpret_u16_p16(lz2.val[1]));
+    ls2 = vshll_n_u16(le2, 8);
+    lf2 = veorq_u32(ls2, vreinterpretq_u32_p16(lm3));
+
+    le3 = veor_u32(vget_low_u32(lf2), vget_high_u32(lf2));
+    ls3 = vshll_n_u32(le3, 16);
+    le4 = veorq_u64(ls3, vreinterpretq_u64_u32(lf1));
+    lf3 = vreinterpret_u64_u32(veor_u32(vget_low_u32(vreinterpretq_u32_u64(le4)),
+                               vget_high_u32(vreinterpretq_u32_u64(le4))));
+    lf4 = vshl_n_u64(lf3, 1);
+    return lf4;
+}
+
+local unsigned long crc32_neon(crc, buf, len)
+    unsigned long crc;
+    const unsigned char FAR *buf;
+    uInt len;
+{
+   poly8x8_t xor_constant, lhs1, lhs2, lhs3, lhs4, rhs1, rhs2, rhs3, rhs4;
+   poly8x16_t lhl1, lhl2;
+
+   unsigned long long residues[4];
+   unsigned long loop;
+
+   if (len % 32)
+       return __crc32(crc, buf, len);
+
+   /*
+    * because crc32c has an initial crc value of 0xffffffff, we need to
+    * pre-fold the buffer before folding begins proper.
+    * The following constant is computed by:
+    * 1) finding a 8x32 bit value that gives a 0xffffffff crc (with initial value 0)
+    *    (this will be 7x32 bit 0s and 1x32 bit constant)
+    * 2) run a buffer fold (with 0 xor_constant) on this 8x32 bit value to get the
+    *    xor_constant.
+    */
+   if (crc == 0)
+      xor_constant = vcreate_p8(0xF344863010D12638);
+   else if (crc == 0xffffffff)
+      xor_constant = vcreate_p8(0);
+   else
+      return __crc32(crc, buf, len);
+
+   /* k1 = x^288 mod P(x) - bit reversed */
+   /* k2 = x^256 mod P(x) - bit reversed */
+
+   rhs1 = vcreate_p8(0xED627DAE78ED02D5);  /* k2:k1 */
+   rhs2 = vcreate_p8(0x62EDAE7DED78D502);  /* byte swap */
+   rhs3 = vcreate_p8(0x7DAEED6202D578ED);  /* half-word swap */
+   rhs4 = vcreate_p8(0xAE7D62EDD502ED78);  /* byte swap of half-word swap */
+
+
+   lhl1 = vld1q_p8((const poly8_t *) buf);
+   lhl2 = vld1q_p8((const poly8_t *) buf + 16);
+
+   lhs1 = vget_low_p8(lhl1);
+   lhs2 = vget_high_p8(lhl1);
+   lhs3 = vget_low_p8(lhl2);
+   lhs4 = vget_high_p8(lhl2);
+
+   /* pre-fold lhs4 */
+   lhs4 = vreinterpret_p8_u16(veor_u16(vreinterpret_u16_p8(lhs4),
+       vreinterpret_u16_p8(xor_constant)));
+
+   for (loop = 0; loop < (len - 32)/32; ++loop) {
+       uint64x1_t l1f4, l2f4, l3f4, l4f4;
+
+       l1f4 = crc32_neon_proc_part(lhs1, rhs1, rhs2, rhs3, rhs4);
+       l2f4 = crc32_neon_proc_part(lhs2, rhs1, rhs2, rhs3, rhs4);
+       l3f4 = crc32_neon_proc_part(lhs3, rhs1, rhs2, rhs3, rhs4);
+       l4f4 = crc32_neon_proc_part(lhs4, rhs1, rhs2, rhs3, rhs4);
+
+       lhl1 = vld1q_p8((const poly8_t *) (buf + 32 * (loop + 1)));
+       lhl2 = vld1q_p8((const poly8_t *) (buf + 32 * (loop + 1) + 16));
+
+       __builtin_prefetch(buf + 32 * (loop + 2));
+
+       lhs1 = vget_low_p8(lhl1);
+       lhs2 = vget_high_p8(lhl1);
+       lhs3 = vget_low_p8(lhl2);
+       lhs4 = vget_high_p8(lhl2);
+
+       lhs1 = vreinterpret_p8_u64(veor_u64(vreinterpret_u64_p8(lhs1), l1f4));
+       lhs2 = vreinterpret_p8_u64(veor_u64(vreinterpret_u64_p8(lhs2), l2f4));
+       lhs3 = vreinterpret_p8_u64(veor_u64(vreinterpret_u64_p8(lhs3), l3f4));
+       lhs4 = vreinterpret_p8_u64(veor_u64(vreinterpret_u64_p8(lhs4), l4f4));
+   }
+
+   vst1q_p8((poly8_t *) &residues[0], vcombine_p8(lhs1, lhs2));
+   vst1q_p8((poly8_t *) &residues[2], vcombine_p8(lhs3, lhs4));
+
+   return __crc32(0xffffffff, (const uint8_t *)residues, 32);
+}
+#endif
+
+unsigned long ZEXPORT crc32(crc, buf, len)
+    unsigned long crc;
+    const unsigned char FAR *buf;
+    uInt len;
+{
+    if (buf == Z_NULL) return 0UL;
+
+#ifdef __ARM_HAVE_NEON
+    return crc32_neon(crc, buf, len);
+#else
+    return __crc32(crc, buf, len);
+#endif
 }
 
 #ifdef BYFOUR

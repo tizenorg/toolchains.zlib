@@ -5,10 +5,9 @@ Summary:    The zlib compression and decompression library
 Version:    1.2.5
 Release:    2.7
 Group:      System/Libraries
-License:    zlib and Boost
+License:    Zlib
 URL:        http://www.gzip.org/zlib/
 Source0:    http://www.zlib.net/zlib-%{version}.tar.gz
-Source1001: packaging/zlib.manifest 
 Patch0:     zlib-1.2.4-autotools.patch
 Patch1:     zlib-1.2.5-lfs-decls-bmc-11751.patch
 Requires(post): /sbin/ldconfig
@@ -80,12 +79,16 @@ iconv -f windows-1252 -t utf-8 <ChangeLog >ChangeLog.tmp
 mv ChangeLog.tmp ChangeLog
 
 %build
-cp %{SOURCE1001} .
-CFLAGS=$RPM_OPT_FLAGS ./configure --libdir=%{_libdir} --includedir=%{_includedir} --prefix=%{_prefix}
+CFLAGS=$RPM_OPT_FLAGS ./configure --libdir=%{_libdir} --includedir=%{_includedir} --prefix=%{_prefix} --arch=%{_arch}
 
 #ensure 64 offset versions are compiled (do not override CFLAGS blindly)
+%ifarch %{arm}
+export CFLAGS="`egrep ^CFLAGS Makefile | sed -e 's/CFLAGS=//' | sed -e 's/vfpv3/neon/' | sed -e 's/neon-d16/neon/'` -D__ARM_HAVE_NEON"
+export SFLAGS="`egrep ^SFLAGS Makefile | sed -e 's/SFLAGS=//' | sed -e 's/vfpv3/neon/' | sed -e 's/neon-d16/neon/'` -D__ARM_HAVE_NEON"
+%else
 export CFLAGS="`egrep ^CFLAGS Makefile | sed -e 's/CFLAGS=//'`"
 export SFLAGS="`egrep ^SFLAGS Makefile | sed -e 's/SFLAGS=//'`"
+%endif
 
 #
 # first,build with -fprofile-generate to create the profile data
@@ -136,6 +139,9 @@ popd
 
 rm -f $RPM_BUILD_ROOT%{_libdir}/*.la
 
+mkdir -p %{buildroot}/%{_datadir}/license
+cp -f COPYING %{buildroot}/%{_datadir}/license/%{name}
+cp -f COPYING %{buildroot}/%{_datadir}/license/minizip
 
 %check
 make test
@@ -154,27 +160,23 @@ make test
 %docs_package
 
 %files
-%manifest zlib.manifest
 /%{_lib}/libz.so.*
-
+%{_datadir}/license/%{name}
 
 %files static
-%manifest zlib.manifest
 %{_libdir}/libz.a
 
 %files -n minizip
-%manifest zlib.manifest
 %{_libdir}/libminizip.so.*
+%{_datadir}/license/minizip
 
 %files -n minizip-devel
-%manifest zlib.manifest
 %dir %{_includedir}/minizip
 %{_includedir}/minizip/*.h
 %{_libdir}/libminizip.so
 %{_libdir}/pkgconfig/minizip.pc
 
 %files devel
-%manifest zlib.manifest
 %{_libdir}/libz.so
 %{_includedir}/zconf.h
 %{_includedir}/zlib.h

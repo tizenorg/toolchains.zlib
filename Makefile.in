@@ -43,6 +43,7 @@ LDSHAREDLIBC=-lc
 TAR=tar
 SHELL=/bin/sh
 EXE=
+ARCH=
 
 prefix = /usr/local
 exec_prefix = ${prefix}
@@ -60,8 +61,13 @@ PIC_OBJC = adler32.lo compress.lo crc32.lo deflate.lo gzclose.lo gzlib.lo gzread
 	gzwrite.lo infback.lo inffast.lo inflate.lo inftrees.lo trees.lo uncompr.lo zutil.lo
 
 # to use the asm code: make OBJA=match.o, PIC_OBJA=match.lo
-OBJA =
-PIC_OBJA =
+ifeq (arm,$(ARCH))
+OBJA=inflate_fast_copy_neon.o
+PIC_OBJA=inflate_fast_copy_neon.lo
+else
+OBJA=
+PIC_OBJA=
+endif
 
 OBJS = $(OBJC) $(OBJA)
 
@@ -122,6 +128,20 @@ match.lo: match.S
 	$(CC) -c -fPIC _match.s
 	mv _match.o match.lo
 	rm -f _match.s
+
+ifeq (arm,$(ARCH))
+inflate_fast_copy_neon.o: ./contrib/inflateneon/inflate_fast_copy_neon.S
+	$(CPP) ./contrib/inflateneon/inflate_fast_copy_neon.S > _inflate_fast_copy_neon.s
+	$(CC) -c $(CFLAGS) _inflate_fast_copy_neon.s
+	mv _inflate_fast_copy_neon.o inflate_fast_copy_neon.o
+	rm -f _inflate_fast_copy_neon.s
+
+inflate_fast_copy_neon.lo: ./contrib/inflateneon/inflate_fast_copy_neon.S
+	$(CPP) ./contrib/inflateneon/inflate_fast_copy_neon.S > _inflate_fast_copy_neon.s
+	$(CC) -c -fPIC $(CFLAGS) _inflate_fast_copy_neon.s
+	mv _inflate_fast_copy_neon.o inflate_fast_copy_neon.lo
+	rm -f _inflate_fast_copy_neon.s
+endif
 
 example64.o: example.c zlib.h zconf.h
 	$(CC) $(CFLAGS) -D_FILE_OFFSET_BITS=64 -c -o $@ example.c
