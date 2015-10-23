@@ -1,0 +1,9 @@
+* Fri Mar 22 2013 Anas Nashif <anas.nashif@intel.com> submit/trunk/20121229.053403@09b3b82
+- Fixed package groups
+
+* Fri Dec 28 2012 Anas Nashif <anas.nashif@intel.com> submit/trunk/20121229.021410@1254f4c
+- fix minizip dependencies
+
+* Fri Dec 28 2012 Anas Nashif <anas.nashif@intel.com> upstream/1.2.7@897cf16
+- add minizip package
+
